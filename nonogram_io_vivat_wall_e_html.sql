@@ -1,4 +1,4 @@
-set termout off feedback off
+set termout off feedback off serveroutput on
 spool io_vivat_31_1_wall_e.html
 begin
   -- IO VIVAT  Jaargang 31 Nummer 1
@@ -53,4 +53,4 @@ end;
 /
 spool off
 set termout on feedback on
-host "C:\Oracle\sql\Mysqljap\io_vivat_31_1_wall_e.html"
+host "io_vivat_31_1_wall_e.html"
