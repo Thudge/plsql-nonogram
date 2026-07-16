@@ -1,0 +1,12 @@
+create or replace package mozaiek
+as
+  MAX_REGEL_LENGTE constant pls_integer:=240;
+
+  subtype   diagram_regel is varchar2(MAX_REGEL_LENGTE);
+  type      diagram  is table of diagram_regel;
+  
+  procedure oplossen
+  ( pi_diagram in diagram
+  );
+end mozaiek;
+/
