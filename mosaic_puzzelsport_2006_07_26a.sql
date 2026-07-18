@@ -1,5 +1,5 @@
-set termout off feedback off serveroutput on
-spool mosaic_puzzelsport_2006_07_26a.html
+set feedback off serveroutput on
+--spool %tmp%\mosaic_puzzelsport_2006_07_26a.html
 begin
   -- Puzzel Sport 2006 Japanse Puzzel Mix, Mozaïek pagina 26 a
   mozaiek.oplossen
@@ -23,6 +23,6 @@ begin
   );
 end;
 /
-spool off
+--spool off
 set termout on feedback on
-host "mosaic_puzzelsport_2006_07_26a.html"
+--host %tmp%\"mosaic_puzzelsport_2006_07_26a.html"
