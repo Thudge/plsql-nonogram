@@ -54,10 +54,11 @@ as
 
   procedure print
   ( pi_line in varchar2
+  , inspring_niveau in telling_type default 0
   )
   is
   begin
-    dbms_output.put_line(pi_line);
+    dbms_output.put_line (lpad(' ',inspring_niveau,' ')||pi_line);
   end print;
 
   procedure debug_message
@@ -212,7 +213,7 @@ as
         end case;
         if l_inkleuring!=C_INKLEURING_ONBEPAALD
         then
-          print
+          debug_message
           ( apex_string.format
             ( 'inkleuring met "%0" op blok %1, aanwijzing is %2'
             , l_inkleuring
@@ -385,6 +386,47 @@ as
     return opgelost(puzzel_van_diagram(pi_diagram));
   end opgelost;
 
+  procedure htmlprint
+  ( pi_puzzel in puzzel_type
+  )
+  is
+    l_cell_size constant natural := 2;
+    l_line varchar2(1000);
+    l_htmlkleur varchar2(60);
+  begin
+    print('<html>');
+    print('<head>');
+    print('<meta http-equiv=Content-Type content="text/html; charset=windows-1252">');
+    print('</head>');
+    print('<body lang=EN-US>');
+    print('<table border=1'
+          ||' width=' ||'800'
+          ||' height=' ||'800'
+          ||' cellspacing=0 cellpadding=0 '
+          ||'style=''background:white;border-collapse:collapse;border:solid black 1''>');
+    for r in 1..pi_puzzel.dimensies.rijen
+    loop
+      print('<tr>',2);
+      l_line := '<td'
+                ||' width=2'
+                ||' height=2'
+                ||' style=''border:solid black 1';
+      for k in 1..pi_puzzel.dimensies.kolommen
+      loop
+        l_htmlkleur:= case pi_puzzel.vakken((geindexeerd(pi_puzzel,r,k))).inkleuring
+                      when c_inkleuring_blanco
+                      then null
+                      else ';background:black'
+                      end;
+        print (l_line||l_htmlkleur||'''>'||chr(38)||'nbsp</td>', 4);
+      end loop;
+      print('</tr>',2);
+    end loop;
+    print('</table>');
+    print('</body>');
+    print('</html>');
+  end htmlprint;
+
   procedure afdrukken
   ( pi_puzzel in puzzel_type
   )
@@ -395,6 +437,7 @@ as
     l_aanwijzing_c varchar2(1);
 
   begin
+    /*
     dbms_output.put_line(apex_string.format('aantal rijen         : %0', pi_puzzel.dimensies.rijen));
     dbms_output.put_line(apex_string.format('aantal kolommen      : %0', pi_puzzel.dimensies.kolommen));
 
@@ -420,6 +463,8 @@ as
       end loop;
       print(l_rij);
     end loop;  
+    */
+    htmlprint(pi_puzzel);
 
   end afdrukken;
 
