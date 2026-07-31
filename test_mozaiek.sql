@@ -10,4 +10,4 @@ prompt installeer package body mozaiek
 @@mozaiek.pkb
 set termout on
 prompt test mozaiek
-@@mosaic_puzzelsport_2006_07_26a.sql
+@@mosaic_puzzelsport_2006_07_38a.sql

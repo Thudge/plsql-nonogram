@@ -20,7 +20,7 @@ as
   subtype index_type is pls_integer;      -- een index waarde kan 'leeg' ofwel 'null' zijn
   subtype inkleuring_type  is char(1) not null; -- zie C_INKLEURING_* voor mogelijke waarden
 
-  C_DEBUG          constant boolean:=false;
+  C_DEBUG          constant boolean:=true;
 
   C_MAX_ITERATIONS constant telling_type:=500;
   C_INKLEURING_ONBEPAALD  constant inkleuring_type :='?';
@@ -34,6 +34,7 @@ as
   );
 
   type ntb_indices_type is table of index_type;
+  type ntb_ntb_indices_type is table of ntb_indices_type;
 
   type vak_type is
   record
@@ -43,13 +44,21 @@ as
 
   type ntb_vakken_type is table of vak_type;
 
-  type hash_aanwijzingen_type is table of telling_type index by index_type;
+  type blok_telling_type is record
+  ( aanwijzing                   telling_type default 0
+  , aantal_inkleuring_blanco     telling_type default 0
+  , aantal_inkleuring_ingekleurd telling_type default 0
+  , aantal_inkleuring_onbepaald  telling_type default 0
+  );
+
+  type hash_blok_tellingen_type is table of blok_telling_type index by index_type;
 
   type puzzel_type is
   record
   ( dimensies           dimensies_type
   , vakken              ntb_vakken_type
-  , aanwijzingen        hash_aanwijzingen_type
+  , blok_tellingen      hash_blok_tellingen_type
+  , vak_to_blok_tellingen ntb_ntb_indices_type
   );
 
   procedure print
@@ -86,31 +95,6 @@ as
     return l_vak_indices;
   end geef_blok;
 
-  procedure markeer_blok
-  ( pio_puzzel              in out nocopy puzzel_type
-  , pi_vak_in_blok_indices  in ntb_indices_type
-  , pi_inkleuring           in inkleuring_type
-  )
-  is
-  begin
-    for l_vak_in_blok_index in 1..pi_vak_in_blok_indices.count
-    loop
-      if pio_puzzel.vakken(pi_vak_in_blok_indices(l_vak_in_blok_index)).inkleuring not in (C_INKLEURING_ONBEPAALD, pi_inkleuring)
-      then
-        debug_message
-        ( apex_string.format
-          ( 'vak met index %0 wordt ingekleurd met "%1" maar is al "%2", dus overslaan'
-          , l_vak_in_blok_index
-          , pi_inkleuring
-          , pio_puzzel.vakken(pi_vak_in_blok_indices(l_vak_in_blok_index)).inkleuring
-          )
-        );
-      else  
-        pio_puzzel.vakken(pi_vak_in_blok_indices(l_vak_in_blok_index)).inkleuring := pi_inkleuring;
-      end if;
-    end loop;  
-  end markeer_blok;
-
   function to_index_string
   ( pi_puzzel in puzzel_type
   , pi_vak_index index_type
@@ -124,6 +108,76 @@ as
     , mod((pi_vak_index-1),pi_puzzel.dimensies.rijen)+1
     );
   end to_index_string;
+
+  procedure markeer_blok
+  ( pio_puzzel              in out nocopy puzzel_type
+  , pi_vak_in_blok_indices  in ntb_indices_type
+  , pi_inkleuring           in inkleuring_type
+  )
+  is
+    l_vak_index index_type:=0;
+    l_blok_telling_vak_index index_type:=0;
+    l_blok_telling_index index_type:=0;
+  begin
+    for l_vak_in_blok_index in 1..pi_vak_in_blok_indices.count
+    loop
+      l_vak_index:=pi_vak_in_blok_indices(l_vak_in_blok_index);
+      if pio_puzzel.vakken(l_vak_index).inkleuring != c_inkleuring_onbepaald
+      then
+        null;
+        debug_message
+        ( apex_string.format
+          ( 'vak %0 wordt ingekleurd met "%1" maar is al "%2", dus overslaan<br/>'
+          , to_index_string(pio_puzzel,l_vak_index)
+          , pi_inkleuring
+          , pio_puzzel.vakken(l_vak_index).inkleuring
+          )
+        );
+      else  
+        debug_message
+        ( apex_string.format
+          ( 'markeer_blok: vak %s gaat van "%s" naar "%s"<br/>'
+          , to_index_string(pio_puzzel,l_vak_index)
+          , pio_puzzel.vakken(l_vak_index).inkleuring
+          , pi_inkleuring
+          )
+        );
+        pio_puzzel.vakken(l_vak_index).inkleuring := pi_inkleuring;
+
+        for l_blok_telling_index in 1..pio_puzzel.vak_to_blok_tellingen(l_vak_index).count
+        loop
+          l_blok_telling_vak_index:=pio_puzzel.vak_to_blok_tellingen(l_vak_index)(l_blok_telling_index);
+          debug_message
+          ( apex_string.format
+            ( 'markeer_blok: blok_telling_index %s van %s, vak %s wordt geteld in blok %s<br/>'
+            , l_blok_telling_index
+            , pio_puzzel.vak_to_blok_tellingen(l_vak_index).count
+            , to_index_string(pio_puzzel,l_vak_index)
+            , to_index_string(pio_puzzel,l_blok_telling_vak_index)
+            )
+          );
+          if pio_puzzel.blok_tellingen.exists(l_blok_telling_vak_index)
+          then
+            case pi_inkleuring
+            when C_INKLEURING_BLANCO
+              then
+                pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_blanco:=pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_blanco+1;
+            when C_INKLEURING_INGEKLEURD
+              then
+                pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_ingekleurd:=pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_ingekleurd+1;
+            end case;
+            pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_onbepaald:=pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_onbepaald-1;
+          else
+            debug_message
+            ( apex_string.format
+              ( 'dit blok is er al niet meer<br/>'
+              )
+            );
+          end if;  
+        end loop;
+      end if;
+    end loop;  
+  end markeer_blok;
 
   function opgelost
   ( pi_puzzel in puzzel_type
@@ -139,100 +193,124 @@ as
     l_aantal_inkleuring_ingekleurd  telling_type:= 0;
     l_aantal_inkleuring_onbepaald   telling_type:= 0;
     l_inkleuring_doorgevoerd boolean:=true;
+    l_strategie_level               telling_type:= 1;
+    l_hoogste_succesvolle_strategie telling_type:= 0;
   begin
-    while l_puzzel.aanwijzingen.count > 0
+    while l_puzzel.blok_tellingen.count > 0
     and l_inkleuring_doorgevoerd
     loop
       l_inkleuring_doorgevoerd:=false;
-      /* alle aanwijzingen waarbij het aantal ofwel 0 is en alle vakken onbepaald of blanco zijn
-         danwel waarbij het aantal blanco vakken + ingekleurde vakken gelijk is
-         aan de aanwijzing, kunnen zondermeer verwerkt worden.
-      */
-      l_vak_index:=l_puzzel.aanwijzingen.first;
+      l_vak_index:=l_puzzel.blok_tellingen.first;
       while l_vak_index is not null
       loop
+        /*
         debug_message
         ( apex_string.format
           ( 'inspectie van aanwijzing %0 bij vak %1'
-          , l_puzzel.aanwijzingen(l_vak_index)
+          , l_puzzel.blok_tellingen(l_vak_index).aanwijzing
           , to_index_string(l_puzzel,l_vak_index)
           )
         );
+        */
         -- vind volgende aanwijzing
-        l_vak_index_volgend:=l_puzzel.aanwijzingen.next(l_vak_index);
+        l_vak_index_volgend:=l_puzzel.blok_tellingen.next(l_vak_index);
         l_inkleuring:=C_INKLEURING_ONBEPAALD;
-        l_aantal_inkleuring_blanco     := 0;
-        l_aantal_inkleuring_ingekleurd := 0;
-        l_aantal_inkleuring_onbepaald  := 0;
+        l_aantal_inkleuring_blanco     := l_puzzel.blok_tellingen(l_vak_index).aantal_inkleuring_blanco;
+        l_aantal_inkleuring_ingekleurd := l_puzzel.blok_tellingen(l_vak_index).aantal_inkleuring_ingekleurd;
+        l_aantal_inkleuring_onbepaald  := l_puzzel.blok_tellingen(l_vak_index).aantal_inkleuring_onbepaald;
+        debug_message
+        ( apex_string.format
+          ( 'aantallen %s: blanco = %s, ingekleurd = %s, onbepaald = %s<br/>'
+          , to_index_string(l_puzzel,l_vak_index)
+          , l_aantal_inkleuring_blanco
+          , l_aantal_inkleuring_ingekleurd
+          , l_aantal_inkleuring_onbepaald
+          )
+        );
         l_vak_in_blok_indices:=geef_blok(l_puzzel,l_vak_index);
-        -- tel de aantallen bij de buren
-        for l_vak_in_blok_index in 1..l_vak_in_blok_indices.count
-        loop
-          debug_message
-          ( apex_string.format
-            ( 'inspectie: vak %0 heeft inkleuring "%1"'
-            , to_index_string(l_puzzel,l_vak_in_blok_indices(l_vak_in_blok_index))
-            , l_puzzel.vakken(l_vak_in_blok_indices(l_vak_in_blok_index)).inkleuring
-            )
-          );
-          case l_puzzel.vakken(l_vak_in_blok_indices(l_vak_in_blok_index)).inkleuring
-            when C_INKLEURING_BLANCO then l_aantal_inkleuring_blanco := l_aantal_inkleuring_blanco + 1;
-            when C_INKLEURING_INGEKLEURD then l_aantal_inkleuring_ingekleurd := l_aantal_inkleuring_ingekleurd + 1;
-            when C_INKLEURING_ONBEPAALD then l_aantal_inkleuring_onbepaald := l_aantal_inkleuring_onbepaald + 1;
-            else
-              raise_application_error ( -20000, 'ongeldige inkleuring.');
-          end case;  
-          debug_message
-          ( apex_string.format
-            ( 'aantallen: onbepaald = %0, blanco = %1, ingekleurd = %2'
-            , l_aantal_inkleuring_onbepaald
-            , l_aantal_inkleuring_blanco
-            , l_aantal_inkleuring_ingekleurd
-            )
-          );
-        end loop;
         -- de uiteindelijke logica
-        -- bepaal of er van een definitieve inkleuring sprake kan zijn
         case
-          when l_puzzel.aanwijzingen(l_vak_index) = l_aantal_inkleuring_onbepaald + l_aantal_inkleuring_ingekleurd
-            then
-              --onbepaalde vakken dienen ingekleurd te zijn
-              l_inkleuring:=C_INKLEURING_INGEKLEURD;
-          when l_puzzel.aanwijzingen(l_vak_index) = l_aantal_inkleuring_ingekleurd
+          -- bepaal of er van een definitieve inkleuring sprake kan zijn
+          when l_puzzel.blok_tellingen(l_vak_index).aanwijzing = l_aantal_inkleuring_ingekleurd
+          and  l_strategie_level >= 1
             then
               --onbepaalde vakken dienen blanco te zijn
-              l_inkleuring:=C_INKLEURING_BLANCO;
+              debug_message
+              ( apex_string.format
+                ( 'strategie 1 van %s: inkleuring met "%s" op blok %s, aanwijzing is %s<br/>'
+                , l_strategie_level
+                , C_INKLEURING_BLANCO
+                , to_index_string(l_puzzel,l_vak_index)
+                , l_aantal_inkleuring_ingekleurd
+                )
+              );
+              markeer_blok
+              ( l_puzzel
+              , l_vak_in_blok_indices
+              , C_INKLEURING_BLANCO
+              );
+              --verwijder deze aanwijzing
+              l_puzzel.blok_tellingen.delete(l_vak_index);
+              l_inkleuring_doorgevoerd:=true;
+          -- bepaal of er van een definitieve blanco inkleuring sprake kan zijn
+          when l_puzzel.blok_tellingen(l_vak_index).aanwijzing = l_aantal_inkleuring_onbepaald + l_aantal_inkleuring_ingekleurd
+          and  l_strategie_level >= 2
+            then
+              --onbepaalde vakken dienen ingekleurd te zijn
+              debug_message
+              ( apex_string.format
+                ( 'strategie 2 van %s: inkleuring met "%s" op blok %s, aanwijzing is %s<br/>'
+                , l_strategie_level
+                , C_INKLEURING_INGEKLEURD
+                , to_index_string(l_puzzel,l_vak_index)
+                , l_puzzel.blok_tellingen(l_vak_index).aanwijzing
+                )
+              );
+              markeer_blok
+              ( l_puzzel
+              , l_vak_in_blok_indices
+              , C_INKLEURING_INGEKLEURD
+              );
+              --verwijder deze aanwijzing
+              l_puzzel.blok_tellingen.delete(l_vak_index);
+              l_inkleuring_doorgevoerd:=true;
+          when 1=0 -- de nog onbepaalde vakken zijn zo in groepen onder te verdelen dat er, gezien maximaliteits
+          -- beperkingen op deze groepen, groepen overblijven die elk uit slechts 1 vak bestaan die
+          -- ingekleurd moeten zijn
+          and  l_strategie_level >= 3
+            then
+              --onbepaalde vakken dienen ingekleurd te zijn
+              raise_application_error(-20000,'todo strat level 3');
+              --verwijder deze aanwijzing
+              l_puzzel.blok_tellingen.delete(l_vak_index);
+              l_inkleuring_doorgevoerd:=true;
           else
+            null;
+            /*
             debug_message
             ( apex_string.format
-              ( '(nu nog)overslaan aanwijzing %0 op vak %1'
-              , l_puzzel.aanwijzingen(l_vak_index)
+              ( 'strategie %s: (nu nog)overslaan aanwijzing %0 op vak %1'
+              , l_strategie_level
+              , l_puzzel.blok_tellingen(l_vak_index).aanwijzing
               , l_vak_index
+              , l_strategie_level
               )
             );
+            */
         end case;
-        if l_inkleuring!=C_INKLEURING_ONBEPAALD
-        then
-          debug_message
-          ( apex_string.format
-            ( 'inkleuring met "%0" op blok %1, aanwijzing is %2'
-            , l_inkleuring
-            , to_index_string(pi_puzzel,l_vak_index)
-            , l_puzzel.aanwijzingen(l_vak_index)
-            )
-          );
-          markeer_blok
-          ( l_puzzel
-          , l_vak_in_blok_indices
-          , l_inkleuring
-          );
-          --verwijder deze aanwijzing
-          l_puzzel.aanwijzingen.delete(l_vak_index);
-          l_inkleuring_doorgevoerd:=true;
-        end if;  
         -- vind volgende aanwijzing
         l_vak_index:=l_vak_index_volgend;
       end loop; 
+      if l_inkleuring_doorgevoerd
+      then
+        l_hoogste_succesvolle_strategie:=l_strategie_level;
+      end if;  
+      if not l_inkleuring_doorgevoerd
+      and l_strategie_level = l_hoogste_succesvolle_strategie
+      then
+        l_strategie_level:=l_strategie_level + 1;
+        l_inkleuring_doorgevoerd:=true;
+      end if;  
     end loop;
     return l_puzzel;
   end opgelost;
@@ -285,6 +363,8 @@ as
     l_aanwijzing_symbool varchar2(1);
     l_aantal_inkleuringen telling_type:=0;
     l_buren  ntb_indices_type;
+    l_buur_vak_index index_type;
+    l_blok_telling blok_telling_type;
   begin
     -- initialiseer de vakken
     l_puzzel.dimensies.rijen:=pi_diagram.count;
@@ -293,6 +373,11 @@ as
     l_puzzel.vakken:=ntb_vakken_type();
     -- maak de inhoudelijk nog onbepaalde vakken aan
     l_puzzel.vakken.extend(l_puzzel.dimensies.rijen*l_puzzel.dimensies.kolommen);
+    -- initialiseer de 'reverse index' van bij welke blokken elk vak hoort
+    l_puzzel.vak_to_blok_tellingen:=ntb_ntb_indices_type();
+    -- maak de inhoudelijk nog onbepaalde lijst van blokken aan
+    l_puzzel.vak_to_blok_tellingen.extend(l_puzzel.dimensies.rijen*l_puzzel.dimensies.kolommen);
+
     for i in 1..l_puzzel.dimensies.rijen
     -- voor elke regel i
     loop
@@ -307,6 +392,8 @@ as
       -- voor elke kolom j
       loop
         l_puzzel.vakken(geindexeerd(l_puzzel,i,j)).inkleuring:=C_INKLEURING_ONBEPAALD;
+        l_puzzel.vak_to_blok_tellingen(geindexeerd(l_puzzel,i,j)):=ntb_indices_type();
+        /*
         debug_message
         ( apex_string.format
           ( 'vak (%0,%1) heeft inkleuring "%2"'
@@ -315,6 +402,7 @@ as
           , l_puzzel.vakken(geindexeerd(l_puzzel,i,j)).inkleuring
           )
         );
+        */
         -- leg een lijst van buren vast
         l_buren:=ntb_indices_type();
         for dx in -1 .. 1 loop
@@ -325,6 +413,7 @@ as
             then
               l_buren.extend();
               l_buren(l_buren.count):=geindexeerd(l_puzzel,i+dx,j+dy);
+              /*
               debug_message
               ( apex_string.format
                 ( 'buur van (%0,%1) is (%2,%3) met index %4'
@@ -332,21 +421,24 @@ as
                 , j
                 , i+dx
                 , j+dy
-                , geindexeerd(l_puzzel,i+dx,j+dy)
+                , l_buren(l_buren.count)
                 )
               );
+              */
             end if;
           end loop;
         end loop;
         l_puzzel.vakken(geindexeerd(l_puzzel,i,j)).buren:=l_buren;
+        /*
         debug_message
         ( apex_string.format
           ( 'vak (%0,%1) heeft %2 buren'
           , i
           , j
-          , l_puzzel.vakken(geindexeerd(l_puzzel,i,j)).buren.count
+          , l_buren.count
           )
         );
+        */
         -- stel de mogelijke aanwijzing vast
         l_aanwijzing_symbool:=trim(substr(pi_diagram(i),j,1));
         if l_aanwijzing_symbool is not null
@@ -361,10 +453,17 @@ as
               , j
               )
             );
-          l_puzzel.aanwijzingen(geindexeerd(l_puzzel,i,j)):=l_aantal_inkleuringen;
+          l_blok_telling.aanwijzing                   := l_aantal_inkleuringen;
+          l_blok_telling.aantal_inkleuring_blanco     := 0;
+          l_blok_telling.aantal_inkleuring_ingekleurd := 0;
+          l_blok_telling.aantal_inkleuring_onbepaald  := l_buren.count + 1;
+          
+          l_puzzel.blok_tellingen(geindexeerd(l_puzzel,i,j)):=l_blok_telling;
+
           debug_message
           ( apex_string.format
-            ( 'regel %0 kolom %1 heeft aanwijzing %2'
+            ( 'vak %s (%s,%s) heeft aanwijzing %s<br/>'
+            , geindexeerd(l_puzzel,i,j)
             , i
             , j
             , l_aantal_inkleuringen
@@ -373,6 +472,40 @@ as
         end if;
       end loop;
     end loop;
+    -- doorloop de vakken om een 'reverse index' op te bouwen bij welke blokken elk
+    -- vak hoort
+    for l_vak_index in 1..l_puzzel.vakken.count
+    loop
+      if l_puzzel.blok_tellingen.exists(l_vak_index)
+      then
+        -- een vak met een aanwijzing behoort tot 'eigen' blok telling
+        l_puzzel.vak_to_blok_tellingen(l_vak_index).extend;
+        l_puzzel.vak_to_blok_tellingen(l_vak_index)(l_puzzel.vak_to_blok_tellingen(l_vak_index).count):=l_vak_index;
+        debug_message
+        ( apex_string.format
+          ( 'vak %s wordt geteld in eigen blok<br/>'
+          , to_index_string(l_puzzel,l_vak_index)
+          )
+        );
+      end if;
+      for l_buur_teller in 1..l_puzzel.vakken(l_vak_index).buren.count
+      loop
+        l_buur_vak_index:=l_puzzel.vakken(l_vak_index).buren(l_buur_teller);
+        if l_puzzel.blok_tellingen.exists(l_buur_vak_index)
+        then
+          l_puzzel.vak_to_blok_tellingen(l_vak_index).extend;
+          l_puzzel.vak_to_blok_tellingen(l_vak_index)(l_puzzel.vak_to_blok_tellingen(l_vak_index).count):=l_buur_vak_index;
+          debug_message
+          ( apex_string.format
+            ( 'vak %s wordt geteld in blok %s<br/>'
+            , to_index_string(l_puzzel,l_vak_index)
+            , to_index_string(l_puzzel,l_buur_vak_index)
+            )
+          );
+        end if;
+      end loop;
+    end loop;
+
     return l_puzzel;
   end puzzel_van_diagram;
 
@@ -393,32 +526,48 @@ as
     l_cell_size constant natural := 2;
     l_line varchar2(1000);
     l_htmlkleur varchar2(60);
+    l_aanwijzing_c varchar2(10);
   begin
     print('<html>');
     print('<head>');
     print('<meta http-equiv=Content-Type content="text/html; charset=windows-1252">');
+    print('<style>');
+    print('  td {border: solid black 1; color: black; text-align: center; vertical-align: middle; }');
+    print('  .ingekleurd {aspect-ratio: 1 / 1; color: white ;background: black; }');
+    print('  .onbepaald  {aspect-ratio: 1 / 1; background: grey; }');
+    print('  .blanco     {aspect-ratio: 1 / 1; background: white; }');
+    print('</style>');
     print('</head>');
     print('<body lang=EN-US>');
     print('<table border=1'
-          ||' width=' ||'800'
-          ||' height=' ||'800'
-          ||' cellspacing=0 cellpadding=0 '
-          ||'style=''background:white;border-collapse:collapse;border:solid black 1''>');
+          ||' width=' ||'"25%"'
+          ||'style=''border-collapse:collapse;border:solid black 1''>');
     for r in 1..pi_puzzel.dimensies.rijen
     loop
       print('<tr>',2);
-      l_line := '<td'
-                ||' width=2'
-                ||' height=2'
-                ||' style=''border:solid black 1';
       for k in 1..pi_puzzel.dimensies.kolommen
       loop
-        l_htmlkleur:= case pi_puzzel.vakken((geindexeerd(pi_puzzel,r,k))).inkleuring
-                      when c_inkleuring_blanco
-                      then null
-                      else ';background:black'
-                      end;
-        print (l_line||l_htmlkleur||'''>'||chr(38)||'nbsp</td>', 4);
+        l_htmlkleur:=
+          case pi_puzzel.vakken((geindexeerd(pi_puzzel,r,k))).inkleuring
+            when C_INKLEURING_BLANCO then 'blanco'
+            when C_INKLEURING_INGEKLEURD then 'ingekleurd'
+            when C_INKLEURING_ONBEPAALD then 'onbepaald'
+          end;
+        begin
+          l_aanwijzing_c:=to_char(pi_puzzel.blok_tellingen((geindexeerd(pi_puzzel,r,k))).aanwijzing);
+        exception
+          when no_data_found
+          then
+          l_aanwijzing_c:=chr(38)||'nbsp';
+        end;
+        print
+        ( apex_string.format
+          ( '<td><div class="%0">%1</div></td>'
+          , l_htmlkleur
+          , l_aanwijzing_c
+          )
+        , 4  
+        );      
       end loop;
       print('</tr>',2);
     end loop;
@@ -431,41 +580,8 @@ as
   ( pi_puzzel in puzzel_type
   )
   is
-    l_rij varchar2(100);
-    l_vak_index index_type;
-    l_inkleuring inkleuring_type:=C_INKLEURING_ONBEPAALD;
-    l_aanwijzing_c varchar2(1);
-
   begin
-    /*
-    dbms_output.put_line(apex_string.format('aantal rijen         : %0', pi_puzzel.dimensies.rijen));
-    dbms_output.put_line(apex_string.format('aantal kolommen      : %0', pi_puzzel.dimensies.kolommen));
-
-    dbms_output.put_line(apex_string.format('aantal vakken        : %0', pi_puzzel.vakken.count));
-    dbms_output.put_line(apex_string.format('aantal aanwijzingen  : %0', pi_puzzel.aanwijzingen.count));
-
-    for i in 1..pi_puzzel.dimensies.rijen loop
-      l_rij:=null;
-      for j in 1..pi_puzzel.dimensies.kolommen loop
-        l_vak_index:=geindexeerd(pi_puzzel,i,j);
-        l_inkleuring:=pi_puzzel.vakken(l_vak_index).inkleuring;
-        l_aanwijzing_c:=' ';
-        if pi_puzzel.aanwijzingen.exists(l_vak_index)
-        then
-          l_aanwijzing_c:=to_char(pi_puzzel.aanwijzingen(l_vak_index));
-        end if;
-        if pi_puzzel.aanwijzingen.count>0
-        then
-          l_rij:=l_rij||apex_string.format('(%0)[%1]',l_aanwijzing_c,l_inkleuring);
-        else
-          l_rij:=l_rij||apex_string.format('%0',l_inkleuring);
-        end if;
-      end loop;
-      print(l_rij);
-    end loop;  
-    */
     htmlprint(pi_puzzel);
-
   end afdrukken;
 
   /****************************************************************************

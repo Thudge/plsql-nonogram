@@ -2,6 +2,7 @@ set feedback off serveroutput on
 spool %tmp%\mosaic_puzzelsport_2006_07_26a.html
 begin
   -- Puzzel Sport 2006 Japanse Puzzel Mix, Mozaïek pagina 26 a
+  -- PS3000108
   mozaiek.oplossen
   ( mozaiek.diagram
     ( '  542  0  3 6  '
