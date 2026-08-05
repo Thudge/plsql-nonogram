@@ -20,7 +20,7 @@ as
   subtype index_type is pls_integer;      -- een index waarde kan 'leeg' ofwel 'null' zijn
   subtype inkleuring_type  is char(1) not null; -- zie C_INKLEURING_* voor mogelijke waarden
 
-  C_DEBUG          constant boolean:=true;
+  C_DEBUG          constant boolean:=false;
 
   C_MAX_ITERATIONS constant telling_type:=500;
   C_INKLEURING_ONBEPAALD  constant inkleuring_type :='?';
@@ -36,6 +36,8 @@ as
   type ntb_indices_type is table of index_type;
   type ntb_ntb_indices_type is table of ntb_indices_type;
 
+  type hash_indices_type is table of index_type index by index_type;
+
   type vak_type is
   record
   ( inkleuring  inkleuring_type default C_INKLEURING_ONBEPAALD
@@ -44,11 +46,20 @@ as
 
   type ntb_vakken_type is table of vak_type;
 
+  type onderverdeeld_blok_type is record
+  ( min_ingekleurd        telling_type default 0
+  , max_ingekleurd        telling_type default 0
+  , niet_gekleurde_vakken hash_indices_type
+  );
+
+  type onderverdeling_type is table of onderverdeeld_blok_type;
+
   type blok_telling_type is record
   ( aanwijzing                   telling_type default 0
   , aantal_inkleuring_blanco     telling_type default 0
   , aantal_inkleuring_ingekleurd telling_type default 0
   , aantal_inkleuring_onbepaald  telling_type default 0
+  , onderverdeling               onderverdeling_type default onderverdeling_type()
   );
 
   type hash_blok_tellingen_type is table of blok_telling_type index by index_type;
@@ -59,6 +70,8 @@ as
   , vakken              ntb_vakken_type
   , blok_tellingen      hash_blok_tellingen_type
   , vak_to_blok_tellingen ntb_ntb_indices_type
+  , start_moment        timestamp default systimestamp
+  , oplostijd           interval day to second
   );
 
   procedure print
@@ -167,6 +180,9 @@ as
                 pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_ingekleurd:=pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_ingekleurd+1;
             end case;
             pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_onbepaald:=pio_puzzel.blok_tellingen(l_blok_telling_vak_index).aantal_inkleuring_onbepaald-1;
+
+            -- hier ook de onderverdeling bijwerken todo
+
           else
             debug_message
             ( apex_string.format
@@ -312,6 +328,7 @@ as
         l_inkleuring_doorgevoerd:=true;
       end if;  
     end loop;
+    l_puzzel.oplostijd:=systimestamp-l_puzzel.start_moment;
     return l_puzzel;
   end opgelost;
 
@@ -363,8 +380,11 @@ as
     l_aanwijzing_symbool varchar2(1);
     l_aantal_inkleuringen telling_type:=0;
     l_buren  ntb_indices_type;
+    l_vak_index index_type;
+    l_vak_in_blok_indices ntb_indices_type;
     l_buur_vak_index index_type;
     l_blok_telling blok_telling_type;
+    l_onderverdeling_beschrijving varchar2(4000);
   begin
     -- initialiseer de vakken
     l_puzzel.dimensies.rijen:=pi_diagram.count;
@@ -506,6 +526,38 @@ as
       end loop;
     end loop;
 
+    --default onderverdeling maken voor elk vak met een aanwijzing
+    l_vak_index:=l_puzzel.blok_tellingen.first;
+    while l_vak_index is not null
+    loop
+      l_onderverdeling_beschrijving:=null;
+      -- initiëel gaan er minimaal EN maximaal <aanwijzing> gekleurde vakken
+      -- in het blok bestaande uit het vak met haar buren
+      l_puzzel.blok_tellingen(l_vak_index).onderverdeling.extend;
+      l_vak_in_blok_indices:=geef_blok(l_puzzel,l_vak_index);
+      for t in 1..l_vak_in_blok_indices.count
+      loop
+        l_onderverdeling_beschrijving:=l_onderverdeling_beschrijving||to_index_string(l_puzzel,l_vak_in_blok_indices(t));
+        l_puzzel.blok_tellingen(l_vak_index).onderverdeling(1).niet_gekleurde_vakken(l_vak_in_blok_indices(t)):=1;
+        l_puzzel.blok_tellingen(l_vak_index).onderverdeling(1).min_ingekleurd:=l_puzzel.blok_tellingen(l_vak_index).aanwijzing;
+        l_puzzel.blok_tellingen(l_vak_index).onderverdeling(1).max_ingekleurd:=l_puzzel.blok_tellingen(l_vak_index).aanwijzing;
+      end loop;
+      debug_message
+      ( apex_string.format
+        ( '** vak %s initiële onderverdeling: min %s en max %s gekleurde vakken in [%s] <br/>'
+        , to_index_string ( l_puzzel, l_vak_index )
+        , l_puzzel.blok_tellingen(l_vak_index).onderverdeling(1).min_ingekleurd
+        , l_puzzel.blok_tellingen(l_vak_index).onderverdeling(1).max_ingekleurd
+        , l_onderverdeling_beschrijving
+        )
+      );
+
+      l_vak_index:=l_puzzel.blok_tellingen.next(l_vak_index);
+    end loop;
+
+    -- nu elk vak ( met een aanwijzing ) een initiële onderverdeling heeft
+    -- verfijn verder mbv de aanwijzingen van naastgelegen vakken met een aanwijzing
+
     return l_puzzel;
   end puzzel_van_diagram;
 
@@ -530,18 +582,23 @@ as
   begin
     print('<html>');
     print('<head>');
+    print('<meta charset="UTF-8">');
     print('<meta http-equiv=Content-Type content="text/html; charset=windows-1252">');
     print('<style>');
-    print('  td {border: solid black 1; color: black; text-align: center; vertical-align: middle; }');
-    print('  .ingekleurd {aspect-ratio: 1 / 1; color: white ;background: black; }');
-    print('  .onbepaald  {aspect-ratio: 1 / 1; background: grey; }');
-    print('  .blanco     {aspect-ratio: 1 / 1; background: white; }');
+    print
+    ( apex_string.format
+      ( '  table {width: %0; height: %0; table-layout: fixed; border-collapse: separate; }'
+      , '800'
+      )
+    );
+    print('  td {color: black; text-align: center; vertical-align: middle;}');
+    print('  .ingekleurd {color: white ;background: black; }');
+    print('  .onbepaald  {color: white ;background: #555555; }');
+    print('  .blanco     {background: #ebddad; }');
     print('</style>');
     print('</head>');
     print('<body lang=EN-US>');
-    print('<table border=1'
-          ||' width=' ||'"25%"'
-          ||'style=''border-collapse:collapse;border:solid black 1''>');
+    print('<table>');
     for r in 1..pi_puzzel.dimensies.rijen
     loop
       print('<tr>',2);
@@ -562,7 +619,7 @@ as
         end;
         print
         ( apex_string.format
-          ( '<td><div class="%0">%1</div></td>'
+          ( '<td class="%0">%1</td>'
           , l_htmlkleur
           , l_aanwijzing_c
           )
@@ -572,6 +629,9 @@ as
       print('</tr>',2);
     end loop;
     print('</table>');
+    debug_message(apex_string.format('<p>starttijd: %s</p>',pi_puzzel.start_moment));
+    debug_message(apex_string.format('<p>eindtijd : %s</p>',systimestamp));
+    print(apex_string.format('<p>beëindigd in %0 milliseconden</p>',round(1000*extract(second from pi_puzzel.oplostijd)),0));
     print('</body>');
     print('</html>');
   end htmlprint;
