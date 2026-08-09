@@ -1,17 +1,17 @@
 set feedback off serveroutput on
-spool %tmp%\mosaic_testcase01.html
+spool output\mosaic_testcase01.html
 begin
-  -- just 2 hints
+  -- just 4 hints
   mozaiek.oplossen
   ( mozaiek.diagram
     ( '    '
     , ' 6  '
-    , '  1 '
-    , '    '
+    , '3 1 '
+    , ' 1  '
     )
   );
 end;
 /
 spool off
 set termout on feedback on
-host %tmp%\mosaic_testcase01.html
+host output\mosaic_testcase01.html
