@@ -14,4 +14,4 @@ end;
 /
 spool off
 set termout on feedback on
--- host output\mosaic_testcase01.html
+host output\mosaic_testcase00.html

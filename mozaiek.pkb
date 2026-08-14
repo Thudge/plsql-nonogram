@@ -56,9 +56,6 @@ as
 
   type blok_telling_type is record
   ( aanwijzing                   telling_type default 0
-  , aantal_inkleuring_blanco     telling_type default 0
-  , aantal_inkleuring_ingekleurd telling_type default 0
-  , aantal_inkleuring_onbepaald  telling_type default 0
   , onderverdeling               onderverdeling_type default onderverdeling_type()
   );
 
@@ -176,14 +173,76 @@ as
             );
             if pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).onbepaalde_vakken.count > 1
             then
+              debug_message
+              ( apex_string.format
+                ( 'markeer_onderverdeling PRE : vak %s in blok %s\ %s:%s[%s,%s]<br/>'
+                , to_index_string(pio_puzzel,pi_vak_index)
+                , to_index_string(pio_puzzel,i_blok_telling)
+                , i_onderverdeling
+                , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).onbepaalde_vakken.count
+                , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).min_ingekleurd
+                , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).max_ingekleurd
+                )
+              );
               pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).onbepaalde_vakken.delete(pi_vak_index);
               if pi_inkleuring = C_INKLEURING_INGEKLEURD
               then
-                pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).max_ingekleurd:=
-                pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).max_ingekleurd - 1;
                 pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).min_ingekleurd:=
-                pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).min_ingekleurd - 1;
+                  greatest
+                  ( pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).min_ingekleurd - 1
+                  , 0
+                  );
+                pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).max_ingekleurd:=
+                  greatest
+                  ( pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).max_ingekleurd - 1
+                  , 0
+                  );
+              else
+                -- minimum kan niet hoger zijn #onbepaalde vlakken
+                pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).min_ingekleurd:=
+                  least
+                  ( pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).min_ingekleurd
+                  , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).onbepaalde_vakken.count
+                  );
+                -- maximum kan niet hoger zijn #onbepaalde vlakken
+                pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).max_ingekleurd:=
+                  least
+                  ( pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).max_ingekleurd
+                  , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).onbepaalde_vakken.count
+                  );
+                -- blanco geplaatst dus minimum van evt. (enig mogelijke) andere segment 1 verhogen
+                for i_onderverdeling_alt in indices of pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling
+                loop
+                  continue when i_onderverdeling_alt = i_onderverdeling;
+                  debug_message
+                  ( apex_string.format
+                    ( 'markeer_onderverdeling : verhoog min in vak %s in blok %s\ %s:%s[%s,%s]<br/>'
+                    , to_index_string(pio_puzzel,pi_vak_index)
+                    , to_index_string(pio_puzzel,i_blok_telling)
+                    , i_onderverdeling_alt
+                    , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).onbepaalde_vakken.count
+                    , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).min_ingekleurd
+                    , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).max_ingekleurd
+                    )
+                  );
+                  pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).min_ingekleurd:=
+                    least
+                    ( pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).min_ingekleurd + 1
+                    , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).onbepaalde_vakken.count
+                    );
+                end loop;
               end if;
+              debug_message
+              ( apex_string.format
+                ( 'markeer_onderverdeling POST: vak %s in blok %s\ %s:%s[%s,%s]<br/>'
+                , to_index_string(pio_puzzel,pi_vak_index)
+                , to_index_string(pio_puzzel,i_blok_telling)
+                , i_onderverdeling
+                , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).onbepaalde_vakken.count
+                , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).min_ingekleurd
+                , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).max_ingekleurd
+                )
+              );
             else
               pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling.delete(i_onderverdeling);
             end if;
@@ -199,6 +258,230 @@ as
     end loop;
   end markeer_onderverdeling;
 
+  procedure verfijn_op_onderverdelingen
+  ( pio_puzzel in out nocopy puzzel_type
+  )
+  is
+    l_vak_index_main          index_type;
+    l_vak_index_buur          index_type;
+    l_onderverdeling_main     onderverdeling_type;
+    l_onderverdeling_main_nw  onderverdeling_type;
+    l_onderverdeling_buur     onderverdeling_type;
+    l_aantal_niet_overlappend telling_type:=0;
+    l_succesvolle_onderverdeling boolean;
+  begin
+    <<main>>
+    for l_vak_index_main in indices of pio_puzzel.blok_tellingen
+    loop
+      l_onderverdeling_main:=pio_puzzel.blok_tellingen(l_vak_index_main).onderverdeling;
+      if l_onderverdeling_main.count > 1
+      then
+        debug_message
+        ( apex_string.format
+          ( 'vak %s bevat reeds meer onderverdeelde segmenten (%s)<br/>'
+          , to_index_string ( pio_puzzel, l_vak_index_main )
+          , l_onderverdeling_main.count
+          )
+        );
+        continue;
+      end if;  
+
+      l_onderverdeling_main_nw:=l_onderverdeling_main;
+      l_succesvolle_onderverdeling:=false;
+      <<buur>>
+      for l_vak_index_buur in values of pio_puzzel.vakken(l_vak_index_main).buren
+      loop
+        -- mits buur een aanwijzing heeft
+        if not pio_puzzel.blok_tellingen.exists(l_vak_index_buur)
+        then
+          continue;
+        end if;  
+        l_onderverdeling_buur:=pio_puzzel.blok_tellingen(l_vak_index_buur).onderverdeling;
+        -- vergelijk hoofdaanwijzing met buuraanwijzing
+        <<main_segment>>
+        for i_onderverdeling_main in indices of l_onderverdeling_main
+        loop
+          -- mits main segment niet reeds opgelost is
+          if l_onderverdeling_main(i_onderverdeling_main).onbepaalde_vakken.count = l_onderverdeling_main(i_onderverdeling_main).min_ingekleurd
+             or
+             l_onderverdeling_main(i_onderverdeling_main).max_ingekleurd = 0
+          then
+            continue;
+          end if;
+          <<buur_segment>>
+          for i_onderverdeling_buur in indices of l_onderverdeling_buur
+          loop
+            -- mits buur segment niet reeds opgelost is
+            if l_onderverdeling_buur(i_onderverdeling_buur).onbepaalde_vakken.count = l_onderverdeling_buur(i_onderverdeling_buur).min_ingekleurd
+               or
+               l_onderverdeling_buur(i_onderverdeling_buur).max_ingekleurd = 0
+            then
+              continue;
+            end if;  
+            l_onderverdeling_main_nw:=l_onderverdeling_main;
+            debug_message
+            ( apex_string.format
+              ( '***TODO***  vergelijk nu hoofd vak %s \ %s:%s[%s,%s] met buur vak %s \ %s:%s[%s,%s]<br/>'
+              , to_index_string ( pio_puzzel, l_vak_index_main )
+              , i_onderverdeling_main
+              , l_onderverdeling_main(i_onderverdeling_main).onbepaalde_vakken.count
+              , l_onderverdeling_main(i_onderverdeling_main).min_ingekleurd
+              , l_onderverdeling_main(i_onderverdeling_main).max_ingekleurd
+              , to_index_string ( pio_puzzel, l_vak_index_buur )
+              , i_onderverdeling_buur
+              , l_onderverdeling_buur(i_onderverdeling_buur).onbepaalde_vakken.count
+              , l_onderverdeling_buur(i_onderverdeling_buur).min_ingekleurd
+              , l_onderverdeling_buur(i_onderverdeling_buur).max_ingekleurd
+              ) 
+            );
+            -- bepaal de set van overlappende vakken
+            -- haal deze over naar een nieuwe set binnen de onderverdeling!
+            l_onderverdeling_main_nw.extend;
+            for i_vak_index in indices of l_onderverdeling_main_nw(i_onderverdeling_main).onbepaalde_vakken
+            loop
+              if l_onderverdeling_buur(i_onderverdeling_buur).onbepaalde_vakken.exists(i_vak_index)
+              then
+                l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).onbepaalde_vakken(i_vak_index):=1;
+                l_onderverdeling_main_nw(i_onderverdeling_main).onbepaalde_vakken.delete(i_vak_index);
+              end if;
+            end loop;
+            -- tel aantal vakken in buursegment dat niet overlapt met nieuwe segment
+            l_aantal_niet_overlappend:=0;
+            for i_vak_index in indices of l_onderverdeling_buur(i_onderverdeling_buur).onbepaalde_vakken
+            loop
+              if not l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).onbepaalde_vakken.exists(i_vak_index)
+              then
+                l_aantal_niet_overlappend:=l_aantal_niet_overlappend+1;
+              end if;
+            end loop;
+            -- als niets overlapt, kijk dan naar volgende buur segment
+            continue buur_segment when l_aantal_niet_overlappend = l_onderverdeling_buur(i_onderverdeling_buur).onbepaalde_vakken.count;
+            -- als ALLES overlapt met bestaande, kijk dan naar volgende buur segment
+            continue buur_segment
+            when  ( l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).onbepaalde_vakken.count
+                  = l_onderverdeling_main(i_onderverdeling_main).onbepaalde_vakken.count
+                  );
+            -- als ALLES overlapt met bestaande buur dan valt er ook niets te winnen ( zelfde segmenten )
+            continue buur_segment
+            when  l_aantal_niet_overlappend = 0
+            and   ( l_onderverdeling_main(i_onderverdeling_main).onbepaalde_vakken.count
+                  = l_onderverdeling_buur(i_onderverdeling_buur).onbepaalde_vakken.count
+                  );
+            -- bepaalde nieuwe minima en maxima
+            debug_message
+            ( apex_string.format
+              ( '***l_aantal_niet_overlappend=%s<br/>'
+              , l_aantal_niet_overlappend
+              ) 
+            );
+            -- nieuwe segment in onderverdeling
+              -- minimum: "minimum buur segment" - "aantal niet overlappende vakken met buursegment"
+            l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).min_ingekleurd:=
+              greatest
+              ( l_onderverdeling_main(i_onderverdeling_main).max_ingekleurd -
+                ( l_onderverdeling_main(i_onderverdeling_main).onbepaalde_vakken.count
+                - l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).onbepaalde_vakken.count )
+              , l_onderverdeling_buur(i_onderverdeling_buur).min_ingekleurd -
+                l_aantal_niet_overlappend
+              , 0  
+              );
+              -- maximum: minste van "aantal onbepaald" en "maximum buur segment" en "oude minimum"
+            l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).max_ingekleurd:=
+              least
+              ( l_onderverdeling_main(i_onderverdeling_main).min_ingekleurd
+              , l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).onbepaalde_vakken.count
+              , l_onderverdeling_buur(i_onderverdeling_buur).max_ingekleurd
+              );
+            -- segment dat overblijft
+              -- minimum: "minimum originele segment" - "maximum nieuwe segment"
+            l_onderverdeling_main_nw(i_onderverdeling_main).min_ingekleurd:=
+              greatest
+              ( 0
+              , l_onderverdeling_main(i_onderverdeling_main).min_ingekleurd -
+                l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).max_ingekleurd
+              );
+              -- maximum: minste van "aantal onbepaald" en "maximum originele segment" - "minimum nieuwe segment"
+            l_onderverdeling_main_nw(i_onderverdeling_main).max_ingekleurd:=
+              least
+              ( l_onderverdeling_main_nw(i_onderverdeling_main).onbepaalde_vakken.count
+              , greatest
+                ( 0
+                , l_onderverdeling_main(i_onderverdeling_main).max_ingekleurd -
+                  l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).min_ingekleurd
+                )  
+              );
+              debug_message
+              ( apex_string.format
+                ( '***TODO*** oude min-max %s/%s, nieuwe %s/%s met %s/%s<br/>'
+                , l_onderverdeling_main(i_onderverdeling_main).min_ingekleurd
+                , l_onderverdeling_main(i_onderverdeling_main).max_ingekleurd
+                , l_onderverdeling_main_nw(i_onderverdeling_main).min_ingekleurd
+                , l_onderverdeling_main_nw(i_onderverdeling_main).max_ingekleurd
+                , l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).min_ingekleurd
+                , l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).max_ingekleurd
+                ) 
+              );
+            --beoordeel de nieuwe onderverdeling
+            for n in indices of l_onderverdeling_main_nw
+            loop
+              l_succesvolle_onderverdeling := 
+                l_succesvolle_onderverdeling
+                or 
+                l_onderverdeling_main_nw(n).min_ingekleurd = l_onderverdeling_main_nw(n).onbepaalde_vakken.count
+                or
+                l_onderverdeling_main_nw(n).max_ingekleurd = 0;
+              debug_message
+              ( apex_string.format
+                ( '***TODO***  nwe onderverdeling %s:%s[%s,%s] : %s<br/>'
+                , n
+                , l_onderverdeling_main_nw(n).onbepaalde_vakken.count
+                , l_onderverdeling_main_nw(n).min_ingekleurd
+                , l_onderverdeling_main_nw(n).max_ingekleurd
+                , case when l_succesvolle_onderverdeling then 'SUCCES' else 'FAIL' end
+                ) 
+              );
+              if l_onderverdeling_main_nw(n).min_ingekleurd < 0
+              then
+                raise_application_error(-20000, 'min moet groter dan 0 zijn<br/>');
+              end if;  
+              if l_onderverdeling_main_nw(n).max_ingekleurd < 0
+              then
+                raise_application_error(-20000, 'max moet groter dan 0 zijn<br/>');
+              end if;  
+              if l_onderverdeling_main_nw(n).min_ingekleurd > l_onderverdeling_main_nw(n).max_ingekleurd
+              then
+                raise_application_error(-20000, 'min moet niet groter dan max zijn<br/>');
+              end if;  
+              if l_onderverdeling_main_nw(n).max_ingekleurd > l_onderverdeling_main_nw(n).onbepaalde_vakken.count
+              then
+                raise_application_error(-20000, 'max moet niet groter dan aantal onbepaald zijn<br/>');
+              end if;  
+            end loop;
+            if not l_onderverdeling_main(i_onderverdeling_main).min_ingekleurd =
+              l_onderverdeling_main_nw(i_onderverdeling_main).min_ingekleurd + 
+              l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).max_ingekleurd
+            then
+              raise_application_error(-20000, 'oude min moet nieuwe min + nieuwe max van nieuwe segment zijn<br/>');
+            end if;  
+
+            if not l_onderverdeling_main(i_onderverdeling_main).max_ingekleurd =
+              l_onderverdeling_main_nw(i_onderverdeling_main).max_ingekleurd + 
+              l_onderverdeling_main_nw(l_onderverdeling_main_nw.count).min_ingekleurd
+            then
+              raise_application_error(-20000, 'oude max moet nieuwe max + nieuwe min van nieuwe segment zijn<br/>');
+            end if;  
+            -- stel de nieuwe onderverdeling in als dat iets oplevert
+            if l_succesvolle_onderverdeling or true
+            then
+              pio_puzzel.blok_tellingen(l_vak_index_main).onderverdeling:=l_onderverdeling_main_nw;
+              exit buur;
+            end if;
+          end loop buur_segment;
+        end loop main_segment;
+      end loop buur;
+    end loop main;
+  end verfijn_op_onderverdelingen;
+
   function opgelost
   ( pi_puzzel in puzzel_type
   )
@@ -209,8 +492,6 @@ as
     l_vak_index_volgend index_type;
     l_inkleuring                    inkleuring_type:=C_INKLEURING_ONBEPAALD;
     l_inkleuring_doorgevoerd boolean:=true;
-    l_strategie_level               telling_type:= 1;
-    l_hoogste_succesvolle_strategie telling_type:= 0;
     l_onderverdeling                onderverdeling_type;
   begin
     while l_puzzel.blok_tellingen.count > 0
@@ -231,13 +512,11 @@ as
           case
             -- bepaal of er van een definitieve inkleuring sprake kan zijn
             when l_onderverdeling(i_onderverdeling).max_ingekleurd = 0
-            and  l_strategie_level >= 1
               then
                 --onbepaalde vakken dienen blanco te zijn
                 debug_message
                 ( apex_string.format
-                  ( 'strategie 1 van %s: inkleuring met "%s" op blok %s, aanwijzing is %s<br/>'
-                  , l_strategie_level
+                  ( q'{strategie 'blanco': inkleuring met "%s" op blok %s, aanwijzing is %s<br/>}'
                   , C_INKLEURING_BLANCO
                   , to_index_string(l_puzzel,l_vak_index)
                   , l_puzzel.blok_tellingen(l_vak_index).aanwijzing
@@ -257,13 +536,11 @@ as
                 l_inkleuring_doorgevoerd:=true;
             -- bepaal of er van een definitieve blanco inkleuring sprake kan zijn
             when l_onderverdeling(i_onderverdeling).min_ingekleurd = l_onderverdeling(i_onderverdeling).onbepaalde_vakken.count
-            and  l_strategie_level >= 2
               then
                 --onbepaalde vakken dienen ingekleurd te zijn
                 debug_message
                 ( apex_string.format
-                  ( 'strategie 2 van %s: inkleuring met "%s" op blok %s, aanwijzing is %s<br/>'
-                  , l_strategie_level
+                  ( q'{strategie 'ingekleurd': inkleuring met "%s" op blok %s, aanwijzing is %s<br/>}'
                   , C_INKLEURING_INGEKLEURD
                   , to_index_string(l_puzzel,l_vak_index)
                   , l_puzzel.blok_tellingen(l_vak_index).aanwijzing
@@ -281,29 +558,14 @@ as
                 --verwijder deze onderverdeling
                 l_puzzel.blok_tellingen(l_vak_index).onderverdeling.delete(i_onderverdeling);
                 l_inkleuring_doorgevoerd:=true;
-            when 1=0 -- de nog onbepaalde vakken zijn zo in groepen onder te verdelen dat er, gezien maximaliteits
-            -- beperkingen op deze groepen, groepen overblijven die elk uit slechts 1 vak bestaan die
-            -- ingekleurd moeten zijn
-            and  l_strategie_level >= 3
-              then
-                --onbepaalde vakken dienen ingekleurd te zijn
-                raise_application_error(-20000,'todo strat level 3');
-                --verwijder deze aanwijzing
-                l_puzzel.blok_tellingen.delete(l_vak_index);
-                l_inkleuring_doorgevoerd:=true;
             else
-              null;
-              /*
               debug_message
               ( apex_string.format
-                ( 'strategie %s: (nu nog)overslaan aanwijzing %0 op vak %1'
-                , l_strategie_level
+                ( '(nu nog)overslaan aanwijzing %s op vak %s<br/>'
                 , l_puzzel.blok_tellingen(l_vak_index).aanwijzing
-                , l_vak_index
-                , l_strategie_level
+                , to_index_string(l_puzzel,l_vak_index)
                 )
               );
-              */
           end case;
         end loop; -- voor elke onderverdeling
         -- geen onderverdelingen meer ? verwijder de bloktelling
@@ -316,14 +578,8 @@ as
       end loop; 
       if l_inkleuring_doorgevoerd
       then
-        l_hoogste_succesvolle_strategie:=l_strategie_level;
-      end if;  
-      if not l_inkleuring_doorgevoerd
-      and l_strategie_level = l_hoogste_succesvolle_strategie
-      then
-        l_strategie_level:=l_strategie_level + 1;
-        l_inkleuring_doorgevoerd:=true;
-      end if;  
+        verfijn_op_onderverdelingen(l_puzzel);
+      end if;
     end loop;
     l_puzzel.oplostijd:=systimestamp-l_puzzel.start_moment;
     return l_puzzel;
@@ -402,47 +658,6 @@ as
     end loop;
   end maak_onderverdelingen;
 
-  procedure verfijn_op_onderverdelingen
-  ( pio_puzzel in out nocopy puzzel_type
-  )
-  is
-    l_vak_index_main      index_type;
-    l_vak_index_buur      index_type;
-    l_onderverdeling_main onderverdeling_type;
-    l_onderverdeling_buur onderverdeling_type;
-  begin
-    l_vak_index_main:=pio_puzzel.blok_tellingen.first;
-    while l_vak_index_main is not null
-    loop
-      for i_buur in 1 .. pio_puzzel.vakken(l_vak_index_main).buren.count
-      loop
-        l_vak_index_buur:=pio_puzzel.vakken(l_vak_index_main).buren(i_buur);
-        -- mits buur een aanwijzing heeft
-        if not pio_puzzel.blok_tellingen.exists(l_vak_index_buur)
-        then
-          continue;
-        end if;  
-        -- TODO: vergelijk hoofdaanwijzing met buuraanwijzing
-        l_onderverdeling_main:=pio_puzzel.blok_tellingen(l_vak_index_main).onderverdeling;
-        for i_onderverdeling_main in 1..l_onderverdeling_main.count
-        loop
-          debug_message
-          ( apex_string.format
-            ( '*** vergelijk nu hoofdaanwijzing vak %s \ %s [%s,%s] met buuraanwijzing vak %s <br/>'
-            , to_index_string ( pio_puzzel, l_vak_index_main )
-            , i_onderverdeling_main
-            , l_onderverdeling_main(i_onderverdeling_main).min_ingekleurd
-            , l_onderverdeling_main(i_onderverdeling_main).max_ingekleurd
-            , to_index_string ( pio_puzzel, l_vak_index_buur )
-            ) 
-          );
-        end loop;
-        -- END TODO: vergelijk hoofdaanwijzing met buuraanwijzing
-      end loop;
-      l_vak_index_main:=pio_puzzel.blok_tellingen.next(l_vak_index_main);
-    end loop;
-  end verfijn_op_onderverdelingen;
-
   function puzzel_van_diagram
   ( pi_diagram in diagram
   )
@@ -469,17 +684,6 @@ as
     l_puzzel.vak_to_blok_tellingen:=ntb_ntb_indices_type();
     -- maak de inhoudelijk nog onbepaalde lijst van blokken aan
     l_puzzel.vak_to_blok_tellingen.extend(l_puzzel.dimensies.rijen*l_puzzel.dimensies.kolommen);
-
-    for i in 1..l_puzzel.dimensies.rijen*l_puzzel.dimensies.kolommen
-    loop
-        debug_message
-        ( apex_string.format
-          ( 'vak %s=%s<br/>'
-          , i
-          , to_index_string(l_puzzel,i)
-          )
-        );
-    end loop;
 
     for i in 1..l_puzzel.dimensies.rijen
     -- voor elke regel i
@@ -556,9 +760,6 @@ as
               )
             );
           l_blok_telling.aanwijzing                   := l_aantal_inkleuringen;
-          l_blok_telling.aantal_inkleuring_blanco     := 0;
-          l_blok_telling.aantal_inkleuring_ingekleurd := 0;
-          l_blok_telling.aantal_inkleuring_onbepaald  := l_buren.count + 1;
           
           l_puzzel.blok_tellingen(geindexeerd(l_puzzel,i,j)):=l_blok_telling;
 
@@ -737,8 +938,10 @@ as
     -- geef opgeloste puzzel van geconverteerd diagram
     l_puzzel puzzel_type := puzzel_van_diagram(pi_diagram);
   begin
+/*     debug_message(apex_string.format('<p>start preparation</p>'));
     afdrukken(l_puzzel);
-    return opgelost(l_puzzel);
+    debug_message(apex_string.format('<p>end preparation</p>'));
+ */    return opgelost(l_puzzel);
   end opgelost;
 
   /****************************************************************************
