@@ -20,7 +20,7 @@ as
   subtype index_type is pls_integer;      -- een index waarde kan 'leeg' ofwel 'null' zijn
   subtype inkleuring_type  is char(1) not null; -- zie C_INKLEURING_* voor mogelijke waarden
 
-  C_DEBUG          constant boolean:=true;
+  C_DEBUG          constant boolean:=false;
 
   C_MAX_ITERATIONS constant telling_type:=500;
   C_INKLEURING_ONBEPAALD  constant inkleuring_type :='?';
@@ -61,6 +61,8 @@ as
 
   type hash_blok_tellingen_type is table of blok_telling_type index by index_type;
 
+  type afvinklijst is table of pls_integer index by varchar2(200);
+
   type puzzel_type is
   record
   ( dimensies           dimensies_type
@@ -70,6 +72,7 @@ as
   , vak_to_blok_tellingen ntb_ntb_indices_type
   , start_moment        timestamp default systimestamp
   , oplostijd           interval day to second
+  , voltooide_vergelijkingen afvinklijst
   );
 
   procedure print
@@ -367,6 +370,7 @@ as
     l_overlap   onderverdeeld_blok_type;
     l_aantal_niet_overlappend telling_type:=0;
     l_succesvolle_onderverdeling boolean;
+    l_uid_vergelijking varchar2(200);
   begin
     <<main>>
     for l_vak_index_main in indices of pio_puzzel.blok_tellingen
@@ -452,6 +456,25 @@ as
               , l_buur(i_buur).max_ingekleurd
               ) 
             );
+            l_uid_vergelijking:=
+              ( apex_string.format
+                ( 'UID:%s:<%s,%s>[%s] === %s:<%s,%s>[%s]<br/>'
+                , to_index_string ( pio_puzzel, l_vak_index_main )
+                , l_main_old(i_main).min_ingekleurd
+                , l_main_old(i_main).max_ingekleurd
+                , to_index_string( pio_puzzel, l_main_old(i_main).onbepaalde_vakken)
+                , to_index_string ( pio_puzzel, l_vak_index_buur )
+                , l_buur(i_buur).min_ingekleurd
+                , l_buur(i_buur).max_ingekleurd
+                , to_index_string( pio_puzzel, l_buur(i_buur).onbepaalde_vakken)
+                ) 
+              );
+            if pio_puzzel.voltooide_vergelijkingen.exists(l_uid_vergelijking)
+            then
+              debug_message ( 'Reeds voltooide vergelijking'); 
+              continue;
+            end if;
+            pio_puzzel.voltooide_vergelijkingen(l_uid_vergelijking):=1;
             -- bepaal de set van overlappende vakken
             -- haal deze over naar een nieuwe set binnen de onderverdeling!
             l_overlap:=null;
@@ -591,7 +614,7 @@ as
             if l_succesvolle_onderverdeling
             then
               pio_puzzel.blok_tellingen(l_vak_index_main).onderverdeling:=l_main;
-              exit buur;
+              exit main; --TODO was buur
             end if;
           end loop buur_segment;
         end loop main_segment;
@@ -917,6 +940,18 @@ as
     -- verfijn verder mbv de aanwijzingen van naastgelegen vakken met een aanwijzing
     verfijn_op_onderverdelingen(l_puzzel);
 
+
+    --
+    -- specifiek voor de kersen puzzel
+/*     markeer_onderverdeling
+    ( l_puzzel
+    , geindexeerd ( l_puzzel, 4, 10)
+    , c_inkleuring_ingekleurd
+    );
+ */    
+
+
+
     return l_puzzel;
   end puzzel_van_diagram;
 
@@ -1014,6 +1049,7 @@ as
     debug_message(apex_string.format('<p>starttijd: %s</p>',pi_puzzel.start_moment));
     debug_message(apex_string.format('<p>eindtijd : %s</p>',systimestamp));
     print(apex_string.format('<p>beëindigd in %0 milliseconden</p>',round(1000*extract(second from pi_puzzel.oplostijd)),0));
+    print(apex_string.format('<p>na %0 unieke aanwijzing vergelijkingen</p>',pi_puzzel.voltooide_vergelijkingen.count  ));
     print('</body>');
     print('</html>');
   end htmlprint;
