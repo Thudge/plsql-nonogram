@@ -78,33 +78,33 @@ Overslaan: overlap is gelijk aan hoofdvak<br/>
 ***TODO***  vergelijk nu hoofd vak (1,2) \ 1:6[2,2] met buur vak (1,1) \ 1:4[2,2]<br/>
 ***l_aantal_niet_overlappend=0<br/>
 Verfijning: oude min,max [2/2], nieuwe [0,0] en [2,2]<br/>
-Beoordeling onderverdeling segment 1:2[0,0] : SUCCES<br/>
-Beoordeling onderverdeling segment 2:4[2,2] : SUCCES<br/>
+Beoordeling onderverdeling segment 1:2[0,0] : SUCCES op vakken [(1,3)(2,3)]<br/>
+Beoordeling onderverdeling segment 2:4[2,2] : SUCCES op vakken [(1,1)(1,2)(2,1)(2,2)]<br/>
 buur vak (1,2) \ 1:2[0,0] kan reeds worden ingekleurd<br/>
 ***TODO***  vergelijk nu hoofd vak (1,3) \ 1:4[1,1] met buur vak (1,2) \ 2:4[2,2]<br/>
 ***l_aantal_niet_overlappend=2<br/>
 Verfijning: oude min,max [1/1], nieuwe [0,1] en [0,1]<br/>
-Beoordeling onderverdeling segment 1:2[0,1] : FAIL<br/>
-Beoordeling onderverdeling segment 2:2[0,1] : FAIL<br/>
+Beoordeling onderverdeling segment 1:2[0,1] : FAIL op vakken [(1,3)(2,3)]<br/>
+Beoordeling onderverdeling segment 2:2[0,1] : FAIL op vakken [(1,2)(2,2)]<br/>
 ***TODO***  vergelijk nu hoofd vak (1,3) \ 1:4[1,1] met buur vak (2,3) \ 1:6[3,3]<br/>
 Overslaan: overlap is gelijk aan hoofdvak<br/>
 buur vak (1,2) \ 1:2[0,0] kan reeds worden ingekleurd<br/>
 ***TODO***  vergelijk nu hoofd vak (2,3) \ 1:6[3,3] met buur vak (1,2) \ 2:4[2,2]<br/>
 ***l_aantal_niet_overlappend=2<br/>
 Verfijning: oude min,max [3/3], nieuwe [1,3] en [0,2]<br/>
-Beoordeling onderverdeling segment 1:4[1,3] : FAIL<br/>
-Beoordeling onderverdeling segment 2:2[0,2] : FAIL<br/>
+Beoordeling onderverdeling segment 1:4[1,3] : FAIL op vakken [(1,3)(2,3)(3,2)(3,3)]<br/>
+Beoordeling onderverdeling segment 2:2[0,2] : FAIL op vakken [(1,2)(2,2)]<br/>
 ***TODO***  vergelijk nu hoofd vak (2,3) \ 1:6[3,3] met buur vak (1,3) \ 1:4[1,1]<br/>
 ***l_aantal_niet_overlappend=0<br/>
 Verfijning: oude min,max [3/3], nieuwe [2,2] en [1,1]<br/>
-Beoordeling onderverdeling segment 1:2[2,2] : SUCCES<br/>
-Beoordeling onderverdeling segment 2:4[1,1] : SUCCES<br/>
+Beoordeling onderverdeling segment 1:2[2,2] : SUCCES op vakken [(3,2)(3,3)]<br/>
+Beoordeling onderverdeling segment 2:4[1,1] : SUCCES op vakken [(1,2)(1,3)(2,2)(2,3)]<br/>
 buur vak (2,3) \ 1:2[2,2] kan reeds worden ingekleurd<br/>
 ***TODO***  vergelijk nu hoofd vak (3,2) \ 1:9[8,8] met buur vak (2,3) \ 2:4[1,1]<br/>
 ***l_aantal_niet_overlappend=2<br/>
 Verfijning: oude min,max [8/8], nieuwe [7,7] en [1,1]<br/>
-Beoordeling onderverdeling segment 1:7[7,7] : SUCCES<br/>
-Beoordeling onderverdeling segment 2:2[1,1] : SUCCES<br/>
+Beoordeling onderverdeling segment 1:7[7,7] : SUCCES op vakken [(2,1)(3,1)(3,2)(3,3)(4,1)(4,2)(4,3)]<br/>
+Beoordeling onderverdeling segment 2:2[1,1] : SUCCES op vakken [(2,2)(2,3)]<br/>
 (nu nog)overslaan aanwijzing 2 op vak (1,1)<br/>
 strategie 'blanco': inkleuring met " " op blok (1,2), aanwijzing is 2<br/>
 markeer_onderverdeling: vak (1,3) gaat van "?" naar " "<br/>
@@ -314,25 +314,25 @@ markeer_onderverdeling: vak (1,2) komt voor in onderverdeling 2 met daarin 1 vak
   table {width: 800; height: 800; table-layout: fixed; border-collapse: separate; }
   td {color: black; text-align: center; vertical-align: middle;}
   .ingekleurd {color: white ;background: black; }
-  .onbepaald  {color: white ;background: #555555; }
+  .onbepaald  {color: white ;background: #529b2a; }
   .blanco     {background: #ebddad; }
 </style>
 </head>
 <body lang=EN-US>
 <table>
   <tr>
-    <td class="blanco">&nbsp</td>
-    <td class="blanco">&nbsp</td>
-    <td class="blanco">&nbsp</td>
+    <td class="blanco">2</td>
+    <td class="blanco">2</td>
+    <td class="blanco">1</td>
   </tr>
   <tr>
     <td class="ingekleurd">&nbsp</td>
     <td class="ingekleurd">&nbsp</td>
-    <td class="blanco">&nbsp</td>
+    <td class="blanco">3</td>
   </tr>
   <tr>
     <td class="ingekleurd">&nbsp</td>
-    <td class="ingekleurd">&nbsp</td>
+    <td class="ingekleurd">8</td>
     <td class="ingekleurd">&nbsp</td>
   </tr>
   <tr>
@@ -341,9 +341,9 @@ markeer_onderverdeling: vak (1,2) komt voor in onderverdeling 2 met daarin 1 vak
     <td class="ingekleurd">&nbsp</td>
   </tr>
 </table>
-<p>starttijd: 15-AUG-26 08.34.35.616886 AM</p>
-<p>eindtijd : 15-AUG-26 08.34.35.630961000 AM +00:00</p>
-<p>beëindigd in 13 milliseconden</p>
+<p>starttijd: 15-AUG-26 02.26.32.757114 PM</p>
+<p>eindtijd : 15-AUG-26 02.26.32.763727000 PM +00:00</p>
+<p>beëindigd in 6 milliseconden</p>
 </body>
 </html>
 

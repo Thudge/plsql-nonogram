@@ -66,6 +66,7 @@ as
   ( dimensies           dimensies_type
   , vakken              ntb_vakken_type
   , blok_tellingen      hash_blok_tellingen_type
+  , blok_tellingen_orig hash_blok_tellingen_type
   , vak_to_blok_tellingen ntb_ntb_indices_type
   , start_moment        timestamp default systimestamp
   , oplostijd           interval day to second
@@ -91,19 +92,15 @@ as
     end if;  
   end;
 
-  function geef_blok
-  ( pi_puzzel     in puzzel_type
-  , pi_vak_index  in index_type
-  )
-  return ntb_indices_type
+  function geindexeerd
+  ( pi_puzzel in puzzel_type
+  , pi_rij    in telling_type
+  , pi_kolom  in telling_type
+  ) return telling_type
   is
-    l_vak_indices ntb_indices_type;
   begin
-    l_vak_indices:=pi_puzzel.vakken(pi_vak_index).buren;
-    l_vak_indices.extend;
-    l_vak_indices(l_vak_indices.count):=pi_vak_index;
-    return l_vak_indices;
-  end geef_blok;
+    return pi_puzzel.dimensies.kolommen * ( pi_rij - 1 ) + pi_kolom;
+  end geindexeerd;
 
   function to_index_string
   ( pi_puzzel in puzzel_type
@@ -119,10 +116,85 @@ as
     );
   end to_index_string;
 
+  function to_index_string
+  ( pi_puzzel in puzzel_type
+  , pi_hash_indices in hash_indices_type
+  )
+  return varchar2
+  is
+    l_index_string varchar2(200);
+    t telling_type:=0;
+  begin
+    for v in indices of pi_hash_indices
+    loop
+      l_index_string:=l_index_string||to_index_string(pi_puzzel,v);
+    end loop;
+    return apex_string.format('[%s]', l_index_string);
+  end to_index_string;
+
+  function geef_blok
+  ( pi_puzzel     in puzzel_type
+  , pi_vak_index  in index_type
+  )
+  return ntb_indices_type
+  is
+    l_vak_indices ntb_indices_type;
+  begin
+    l_vak_indices:=pi_puzzel.vakken(pi_vak_index).buren;
+    l_vak_indices.extend;
+    l_vak_indices(l_vak_indices.count):=pi_vak_index;
+    return l_vak_indices;
+  end geef_blok;
+
+  procedure valideer
+  ( pi_propositie in boolean
+  , pi_melding_als_onwaar in varchar2
+  )
+  is
+  begin
+    if not pi_propositie
+    then
+      dbms_output.put_line ( pi_melding_als_onwaar );
+      raise_application_error ( -20000, 'incorrecte invoer, zie voorgaande melding' );
+    end if;
+  end valideer;
+
+  procedure valideer
+  ( pi_puzzel in puzzel_type
+  )
+  is
+    l_orig_aanwijzing telling_type:=0;
+    l_huidig_ingekleurd telling_type:=0;
+  begin
+    --controleer of nog steeds aan alle aanwijzingen is voldaan
+    for i_vak in indices of pi_puzzel.blok_tellingen_orig
+    loop
+      l_orig_aanwijzing := pi_puzzel.blok_tellingen_orig(i_vak).aanwijzing;
+      l_huidig_ingekleurd:=0;
+      for v in values of geef_blok ( pi_puzzel, i_vak )
+      loop
+        if pi_puzzel.vakken(v).inkleuring = C_INKLEURING_INGEKLEURD
+        then
+          l_huidig_ingekleurd:=l_huidig_ingekleurd+1;
+        end if;
+      end loop;
+      if l_huidig_ingekleurd > l_orig_aanwijzing
+      then
+        debug_message
+        ( apex_string.format
+          ( '#ERROR# Op blok %s, worden %s inkleuringen verwacht maar %s geteld.'
+          , to_index_string ( pi_puzzel, i_vak)
+          , l_orig_aanwijzing
+          , l_huidig_ingekleurd
+          )
+        );
+      end if;
+    end loop;
+  end valideer;
+
   procedure markeer_onderverdeling
   ( pio_puzzel              in out nocopy puzzel_type
   , pi_vak_index            in telling_type
-  , pi_onderverdeling_index in telling_type
   , pi_inkleuring           in inkleuring_type
   )
   is
@@ -142,6 +214,25 @@ as
 
     pio_puzzel.vakken(pi_vak_index).inkleuring := pi_inkleuring;
 
+    valideer ( pio_puzzel );
+
+    /* 
+      specifiek .... voor de kersen puzzel
+    */
+/*     if to_index_string(pio_puzzel,pi_vak_index)||pi_inkleuring
+    in
+    ( '(12,4)'||c_inkleuring_blanco
+    , '(13,5)'||c_inkleuring_ingekleurd
+    , '(15,2)'||c_inkleuring_ingekleurd
+    , '(15,5)'||c_inkleuring_blanco
+    , '(12,2)'||c_inkleuring_ingekleurd
+    , '(13,2)'||c_inkleuring_blanco
+    )
+    then
+      debug_message('Dat is niet de juiste inkleuring op '||to_index_string(pio_puzzel,pi_vak_index)||'<br/>');
+      --raise_application_error(-20000,'Dat is niet de juiste inkleuring op '||to_index_string(pio_puzzel,pi_vak_index));
+    end if;   
+ */
     for i_blok_telling in values of pio_puzzel.vak_to_blok_tellingen(pi_vak_index)
     loop
       debug_message
@@ -457,12 +548,13 @@ as
                 l_main(n).max_ingekleurd = 0;
               debug_message
               ( apex_string.format
-                ( 'Beoordeling onderverdeling segment %s:%s[%s,%s] : %s<br/>'
+                ( 'Beoordeling onderverdeling segment %s:%s[%s,%s] : %s op vakken %s<br/>'
                 , n
                 , l_main(n).onbepaalde_vakken.count
                 , l_main(n).min_ingekleurd
                 , l_main(n).max_ingekleurd
                 , case when l_succesvolle_onderverdeling then 'SUCCES' else 'FAIL' end
+                , to_index_string(pio_puzzel,l_main(n).onbepaalde_vakken)
                 ) 
               );
               if l_main(n).min_ingekleurd < 0
@@ -512,7 +604,8 @@ as
   )
   return puzzel_type
   is
-    l_puzzel puzzel_type:=pi_puzzel;
+    l_puzzel      puzzel_type:=pi_puzzel;
+    l_puzzel_orig constant puzzel_type:=pi_puzzel;
     l_vak_index index_type;
     l_vak_index_volgend index_type;
     l_inkleuring                    inkleuring_type:=C_INKLEURING_ONBEPAALD;
@@ -552,7 +645,6 @@ as
                   markeer_onderverdeling
                   ( l_puzzel
                   , i_vak
-                  , i_onderverdeling
                   , C_INKLEURING_BLANCO
                   );
                 end loop;  
@@ -576,7 +668,6 @@ as
                   markeer_onderverdeling
                   ( l_puzzel
                   , i_vak
-                  , i_onderverdeling
                   , C_INKLEURING_INGEKLEURD
                   );
                 end loop;  
@@ -610,19 +701,6 @@ as
     return l_puzzel;
   end opgelost;
 
-  procedure valideer
-  ( pi_propositie in boolean
-  , pi_melding_als_onwaar in varchar2
-  )
-  is
-  begin
-    if not pi_propositie
-    then
-      dbms_output.put_line ( pi_melding_als_onwaar );
-      raise_application_error ( -20000, 'incorrecte invoer, zie voorgaande melding' );
-    end if;
-  end valideer;
-
   function als_getal_gelezen
   ( pi_symbool in varchar2
   , pi_melding_als_fout in varchar2 default null
@@ -637,16 +715,6 @@ as
       dbms_output.put_line(pi_melding_als_fout);
       raise;
   end als_getal_gelezen;
-
-  function geindexeerd
-  ( pi_puzzel in puzzel_type
-  , pi_rij    in telling_type
-  , pi_kolom  in telling_type
-  ) return telling_type
-  is
-  begin
-    return pi_puzzel.dimensies.kolommen * ( pi_rij - 1 ) + pi_kolom;
-  end geindexeerd;
 
   procedure maak_onderverdelingen
   ( pio_puzzel in out nocopy puzzel_type
@@ -800,6 +868,9 @@ as
         end if;
       end loop;
     end loop;
+    -- zorg voor een originele kopie van de bloktellingen
+    l_puzzel.blok_tellingen_orig:=l_puzzel.blok_tellingen;
+    --
     -- doorloop de vakken om een 'reverse index' op te bouwen bij welke blokken elk
     -- vak hoort
     for l_vak_index in 1..l_puzzel.vakken.count
@@ -904,7 +975,7 @@ as
     );
     print('  td {color: black; text-align: center; vertical-align: middle;}');
     print('  .ingekleurd {color: white ;background: black; }');
-    print('  .onbepaald  {color: white ;background: #555555; }');
+    print('  .onbepaald  {color: white ;background: #529b2a; }');
     print('  .blanco     {background: #ebddad; }');
     print('</style>');
     print('</head>');
@@ -922,7 +993,7 @@ as
             when C_INKLEURING_ONBEPAALD then 'onbepaald'
           end;
         begin
-          l_aanwijzing_c:=to_char(pi_puzzel.blok_tellingen((geindexeerd(pi_puzzel,r,k))).aanwijzing);
+          l_aanwijzing_c:=to_char(pi_puzzel.blok_tellingen_orig((geindexeerd(pi_puzzel,r,k))).aanwijzing);
         exception
           when no_data_found
           then
