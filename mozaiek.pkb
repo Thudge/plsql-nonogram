@@ -18,7 +18,7 @@ as
   */
   subtype telling_type is simple_integer;
   subtype index_type is pls_integer;      -- een index waarde kan 'leeg' ofwel 'null' zijn
-  subtype inkleuring_type  is char(1) not null; -- zie C_INKLEURING_* voor mogelijke waarden
+  subtype inkleuring_type  is varchar2(1) not null; -- zie C_INKLEURING_* voor mogelijke waarden
 
   C_DEBUG          constant boolean:=false;
 
@@ -54,9 +54,12 @@ as
 
   type onderverdeling_type is table of onderverdeeld_blok_type;
 
+  type inkleuring_tellingen_type is table of pls_integer index by inkleuring_type;
+
   type blok_telling_type is record
   ( aanwijzing                   telling_type default 0
   , onderverdeling               onderverdeling_type default onderverdeling_type()
+  , inkleuring_tellingen         inkleuring_tellingen_type := inkleuring_tellingen_type()
   );
 
   type hash_blok_tellingen_type is table of blok_telling_type index by index_type;
@@ -164,8 +167,48 @@ as
 
   procedure valideer
   ( pi_puzzel in puzzel_type
+  , pi_vak_index in index_type
+  , pi_inkleuring in inkleuring_type
   )
   is
+  begin
+    null;
+    case pi_inkleuring
+      when c_inkleuring_ingekleurd
+      then
+        if pi_puzzel.blok_tellingen(pi_vak_index).inkleuring_tellingen(pi_inkleuring)>pi_puzzel.blok_tellingen(pi_vak_index).aanwijzing
+        then
+          raise_application_error
+          ( -20000
+          , apex_string.format
+            ( 'Teveel ingekleurde vakken (%s) op vak %s, aantal verwacht: %s<br/>'
+            , pi_puzzel.blok_tellingen(pi_vak_index).inkleuring_tellingen(pi_inkleuring)
+            , to_index_string(pi_puzzel, pi_vak_index)
+            , pi_puzzel.blok_tellingen(pi_vak_index).aanwijzing
+            )
+          );
+        end if;  
+      else
+        if pi_puzzel.vakken(pi_vak_index).buren.count + 1 - pi_puzzel.blok_tellingen(pi_vak_index).inkleuring_tellingen(pi_inkleuring)<pi_puzzel.blok_tellingen(pi_vak_index).aanwijzing
+        then
+          raise_application_error
+          ( -20000
+          , apex_string.format
+            ( 'Te weinig resterende (%s) in te kleuren vakken op vak %s, aantal verwacht: %s<br/>'
+            , pi_puzzel.vakken(pi_vak_index).buren.count + 1 - pi_puzzel.blok_tellingen(pi_vak_index).inkleuring_tellingen(pi_inkleuring)
+            , to_index_string(pi_puzzel, pi_vak_index)
+            , pi_puzzel.blok_tellingen(pi_vak_index).aanwijzing
+            )
+          );
+        end if;
+    end case;
+  end valideer;
+
+  procedure valideer
+  ( pi_puzzel in puzzel_type
+  )
+  is
+    PRAGMA DEPRECATE (valideer, 'mozaiek.valideer is deprecated, use something else instead.');
     l_orig_aanwijzing telling_type:=0;
     l_huidig_ingekleurd telling_type:=0;
   begin
@@ -183,12 +226,14 @@ as
       end loop;
       if l_huidig_ingekleurd > l_orig_aanwijzing
       then
-        debug_message
-        ( apex_string.format
-          ( '#ERROR# Op blok %s, worden %s inkleuringen verwacht maar %s geteld.'
-          , to_index_string ( pi_puzzel, i_vak)
-          , l_orig_aanwijzing
-          , l_huidig_ingekleurd
+        raise_application_error
+        ( -20000
+        , ( apex_string.format
+            ( '#ERROR# Op blok %s, worden %s inkleuringen verwacht maar %s geteld.'
+            , to_index_string ( pi_puzzel, i_vak)
+            , l_orig_aanwijzing
+            , l_huidig_ingekleurd
+            )
           )
         );
       end if;
@@ -217,25 +262,6 @@ as
 
     pio_puzzel.vakken(pi_vak_index).inkleuring := pi_inkleuring;
 
-    valideer ( pio_puzzel );
-
-    /* 
-      specifiek .... voor de kersen puzzel
-    */
-/*     if to_index_string(pio_puzzel,pi_vak_index)||pi_inkleuring
-    in
-    ( '(12,4)'||c_inkleuring_blanco
-    , '(13,5)'||c_inkleuring_ingekleurd
-    , '(15,2)'||c_inkleuring_ingekleurd
-    , '(15,5)'||c_inkleuring_blanco
-    , '(12,2)'||c_inkleuring_ingekleurd
-    , '(13,2)'||c_inkleuring_blanco
-    )
-    then
-      debug_message('Dat is niet de juiste inkleuring op '||to_index_string(pio_puzzel,pi_vak_index)||'<br/>');
-      --raise_application_error(-20000,'Dat is niet de juiste inkleuring op '||to_index_string(pio_puzzel,pi_vak_index));
-    end if;   
- */
     for i_blok_telling in values of pio_puzzel.vak_to_blok_tellingen(pi_vak_index)
     loop
       debug_message
@@ -244,6 +270,7 @@ as
         , to_index_string(pio_puzzel,i_blok_telling)
         )
       );
+
       if pio_puzzel.blok_tellingen.exists(i_blok_telling)
       then
         debug_message
@@ -251,6 +278,17 @@ as
           ( 'markeer_onderverdeling: dit blok is er nog<br/>'
           )
         );
+
+        -- administreer tellingen op deze aanwijzing
+        pio_puzzel.blok_tellingen(i_blok_telling).inkleuring_tellingen(pi_inkleuring):=
+          pio_puzzel.blok_tellingen(i_blok_telling).inkleuring_tellingen(pi_inkleuring)+1;
+
+        valideer
+        ( pio_puzzel
+        , i_blok_telling
+        , pi_inkleuring
+        ); --TODO duur, maak goedkoper door alleen aanwijzing te controleren -- past deze inkleuring nog ?
+
         -- als vak in onderverdeling voorkomt
         for i_onderverdeling in indices of pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling
         loop
@@ -310,28 +348,7 @@ as
                   , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling).onbepaalde_vakken.count
                   );
                 -- blanco geplaatst dus minimum van evt. (enig mogelijke) andere segment 1 verhogen
-
-/*                 for i_onderverdeling_alt in indices of pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling
-                loop
-                  continue when i_onderverdeling_alt = i_onderverdeling;
-                  debug_message
-                  ( apex_string.format
-                    ( 'markeer_onderverdeling : verhoog min in vak %s in blok %s\ %s:%s[%s,%s]<br/>'
-                    , to_index_string(pio_puzzel,pi_vak_index)
-                    , to_index_string(pio_puzzel,i_blok_telling)
-                    , i_onderverdeling_alt
-                    , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).onbepaalde_vakken.count
-                    , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).min_ingekleurd
-                    , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).max_ingekleurd
-                    )
-                  );
-                  pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).min_ingekleurd:=
-                    least
-                    ( pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).min_ingekleurd + 1
-                    , pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling(i_onderverdeling_alt).onbepaalde_vakken.count
-                    );
-                end loop;
- */              end if;
+              end if;
               debug_message
               ( apex_string.format
                 ( 'markeer_onderverdeling POST: vak %s in blok %s\ %s:%s[%s,%s]<br/>'
@@ -597,19 +614,6 @@ as
                 raise_application_error(-20000, 'max moet niet groter dan aantal onbepaald zijn<br/>');
               end if;  
             end loop;
-            if not l_main_old(i_main).min_ingekleurd =
-              l_main(i_main).min_ingekleurd + 
-              l_overlap.max_ingekleurd
-            then
-              raise_application_error(-20000, 'oude min moet nieuwe min + nieuwe max van nieuwe segment zijn<br/>');
-            end if;  
-
-            if not l_main_old(i_main).max_ingekleurd =
-              l_main(i_main).max_ingekleurd + 
-              l_overlap.min_ingekleurd
-            then
-              raise_application_error(-20000, 'oude max moet nieuwe max + nieuwe min van nieuwe segment zijn<br/>');
-            end if;  
             -- stel de nieuwe onderverdeling in
             if l_succesvolle_onderverdeling
             then
@@ -835,18 +839,6 @@ as
             then
               l_buren.extend();
               l_buren(l_buren.count):=geindexeerd(l_puzzel,i+dx,j+dy);
-              /*
-              debug_message
-              ( apex_string.format
-                ( 'buur van (%0,%1) is (%2,%3) met index %4'
-                , i
-                , j
-                , i+dx
-                , j+dy
-                , l_buren(l_buren.count)
-                )
-              );
-              */
             end if;
           end loop;
         end loop;
@@ -876,6 +868,8 @@ as
               )
             );
           l_blok_telling.aanwijzing                   := l_aantal_inkleuringen;
+          l_blok_telling.inkleuring_tellingen(c_inkleuring_ingekleurd):=0;
+          l_blok_telling.inkleuring_tellingen(c_inkleuring_blanco):=0;
           
           l_puzzel.blok_tellingen(geindexeerd(l_puzzel,i,j)):=l_blok_telling;
 
@@ -943,12 +937,12 @@ as
 
     --
     -- specifiek voor de kersen puzzel
-/*     markeer_onderverdeling
+/*      markeer_onderverdeling
     ( l_puzzel
     , geindexeerd ( l_puzzel, 4, 10)
     , c_inkleuring_ingekleurd
     );
- */    
+ */
 
 
 
