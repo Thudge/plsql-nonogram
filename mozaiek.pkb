@@ -27,6 +27,8 @@ as
   C_INKLEURING_INGEKLEURD constant inkleuring_type :='X';
   C_INKLEURING_BLANCO     constant inkleuring_type :=' ';
 
+  g_recursief_level pls_integer:=0;
+
   type dimensies_type is
   record
   ( rijen     telling_type default 0
@@ -287,7 +289,7 @@ as
         ( pio_puzzel
         , i_blok_telling
         , pi_inkleuring
-        ); --TODO duur, maak goedkoper door alleen aanwijzing te controleren -- past deze inkleuring nog ?
+        );
 
         -- als vak in onderverdeling voorkomt
         for i_onderverdeling in indices of pio_puzzel.blok_tellingen(i_blok_telling).onderverdeling
@@ -385,7 +387,6 @@ as
     l_main      onderverdeling_type;
     l_buur      onderverdeling_type;
     l_overlap   onderverdeeld_blok_type;
-    l_aantal_niet_overlappend telling_type:=0;
     l_succesvolle_onderverdeling boolean;
     l_uid_vergelijking varchar2(200);
   begin
@@ -460,7 +461,7 @@ as
             l_main:=l_main_old;
             debug_message
             ( apex_string.format
-              ( '***TODO***  vergelijk nu hoofd vak %s \ %s:%s[%s,%s] met buur vak %s \ %s:%s[%s,%s]<br/>'
+              ( 'verfijn_op_onderverdelingen: vergelijk nu hoofd vak %s \ %s:%s[%s,%s] met buur vak %s \ %s:%s[%s,%s]<br/>'
               , to_index_string ( pio_puzzel, l_vak_index_main )
               , i_main
               , l_main_old(i_main).onbepaalde_vakken.count
@@ -488,7 +489,7 @@ as
               );
             if pio_puzzel.voltooide_vergelijkingen.exists(l_uid_vergelijking)
             then
-              debug_message ( 'Reeds voltooide vergelijking'); 
+              debug_message ( 'Reeds voltooide vergelijking.<br/>'); 
               continue;
             end if;
             pio_puzzel.voltooide_vergelijkingen(l_uid_vergelijking):=1;
@@ -501,16 +502,6 @@ as
               then
                 l_overlap.onbepaalde_vakken(i_vak_index):=1;
                 l_main(i_main).onbepaalde_vakken.delete(i_vak_index);
-              end if;
-            end loop;
-            -- tel aantal vakken in buursegment dat niet overlapt met nieuwe segment
-            -- TODO is dit aantal nog ergens voor nodig
-            l_aantal_niet_overlappend:=0;
-            for i_vak_index in indices of l_buur(i_buur).onbepaalde_vakken
-            loop
-              if not l_overlap.onbepaalde_vakken.exists(i_vak_index)
-              then
-                l_aantal_niet_overlappend:=l_aantal_niet_overlappend+1;
               end if;
             end loop;
 
@@ -535,14 +526,6 @@ as
               );
               continue;
             end if;  
-
-            -- bepaalde nieuwe minima en maxima
-            debug_message
-            ( apex_string.format
-              ( '***l_aantal_niet_overlappend=%s<br/>'
-              , l_aantal_niet_overlappend
-              ) 
-            );
 
             -- overlap
             l_overlap.min_ingekleurd:=
@@ -618,7 +601,7 @@ as
             if l_succesvolle_onderverdeling
             then
               pio_puzzel.blok_tellingen(l_vak_index_main).onderverdeling:=l_main;
-              exit main; --TODO was buur
+              exit main;
             end if;
           end loop buur_segment;
         end loop main_segment;
@@ -639,6 +622,7 @@ as
     l_inkleuring_doorgevoerd boolean:=true;
     l_onderverdeling                onderverdeling_type;
   begin
+    <<opgelost_main>>
     while l_puzzel.blok_tellingen.count > 0
     and l_inkleuring_doorgevoerd
     loop
@@ -722,8 +706,86 @@ as
       if l_inkleuring_doorgevoerd
       then
         verfijn_op_onderverdelingen(l_puzzel);
+      elsif l_puzzel.blok_tellingen.count > 0
+      then
+        -- make a guess
+        declare
+          l_aantal_onbepaald pls_integer;
+          l_min_aantal_onbepaald pls_integer:=10;
+          l_vak_probeer index_type:=l_puzzel.blok_tellingen.first;
+          l_probeer_vakken ntb_indices_type:=ntb_indices_type();
+        begin
+          -- op een resterend blok met zo min mogelijk overblijvende vakken
+          -- wordt één voor één een vak geprobeerd in te kleuren
+          for i_vak in indices of l_puzzel.blok_tellingen
+          loop
+            l_aantal_onbepaald:=0;
+            for j in indices of l_puzzel.blok_tellingen(i_vak).onderverdeling
+            loop
+              l_aantal_onbepaald:=l_aantal_onbepaald+l_puzzel.blok_tellingen(i_vak).onderverdeling(j).onbepaalde_vakken.count;
+            end loop;
+            if l_aantal_onbepaald < l_min_aantal_onbepaald
+            then
+              l_min_aantal_onbepaald := l_aantal_onbepaald;
+              l_vak_probeer := i_vak;
+            end if;  
+          end loop;
+          debug_message
+          ( apex_string.format
+            ( 'probeer alle %s vakken rond aanwijzing op %s in te kleuren<br/>'
+            , l_min_aantal_onbepaald
+            , to_index_string(l_puzzel, l_vak_probeer)
+            )
+          );
+
+
+          for i_onderverdeling in indices of l_puzzel.blok_tellingen(l_vak_probeer).onderverdeling
+          loop
+            for i_vak in indices of l_puzzel.blok_tellingen(l_vak_probeer).onderverdeling(i_onderverdeling).onbepaalde_vakken
+            loop
+              l_probeer_vakken.extend();
+              l_probeer_vakken(l_probeer_vakken.last):=i_vak;
+              debug_message
+              ( apex_string.format
+                ( 'namelijk vak %s<br/>'
+                , to_index_string(l_puzzel, i_vak)
+                )
+              );
+            end loop;  
+          end loop;
+
+          for i_probeer_vak in values of l_probeer_vakken
+          loop
+            declare
+              l_probeer_puzzel puzzel_type:=l_puzzel;
+              l_recursief_level pls_integer:=g_recursief_level;
+            begin
+              if g_recursief_level > 12
+              then
+                raise_application_error ( -20000, 'afvangen van te hoog recursief level');
+              end if;
+              markeer_onderverdeling
+              ( l_probeer_puzzel
+              , i_probeer_vak
+              , c_inkleuring_ingekleurd
+              );
+              g_recursief_level:=g_recursief_level+1;
+              l_probeer_puzzel:=opgelost(l_probeer_puzzel);
+              -- als dat goed ging:
+              g_recursief_level:=l_recursief_level;
+              l_puzzel:=l_probeer_puzzel;
+              exit opgelost_main;
+            exception
+              when others
+              then
+                g_recursief_level:=l_recursief_level;
+                debug_message ( 'Backtracking: naar volgende optie.<br/>' );
+            end;
+          end loop;
+          raise_application_error ( -20000, 'Backtracking: alle opties uitgelopen.');
+        end;
       end if;
-    end loop;
+    end loop opgelost_main;
     l_puzzel.oplostijd:=systimestamp-l_puzzel.start_moment;
     return l_puzzel;
   end opgelost;
