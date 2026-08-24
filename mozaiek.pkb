@@ -206,42 +206,6 @@ as
     end case;
   end valideer;
 
-  procedure valideer
-  ( pi_puzzel in puzzel_type
-  )
-  is
-    PRAGMA DEPRECATE (valideer, 'mozaiek.valideer is deprecated, use something else instead.');
-    l_orig_aanwijzing telling_type:=0;
-    l_huidig_ingekleurd telling_type:=0;
-  begin
-    --controleer of nog steeds aan alle aanwijzingen is voldaan
-    for i_vak in indices of pi_puzzel.blok_tellingen_orig
-    loop
-      l_orig_aanwijzing := pi_puzzel.blok_tellingen_orig(i_vak).aanwijzing;
-      l_huidig_ingekleurd:=0;
-      for v in values of geef_blok ( pi_puzzel, i_vak )
-      loop
-        if pi_puzzel.vakken(v).inkleuring = C_INKLEURING_INGEKLEURD
-        then
-          l_huidig_ingekleurd:=l_huidig_ingekleurd+1;
-        end if;
-      end loop;
-      if l_huidig_ingekleurd > l_orig_aanwijzing
-      then
-        raise_application_error
-        ( -20000
-        , ( apex_string.format
-            ( '#ERROR# Op blok %s, worden %s inkleuringen verwacht maar %s geteld.'
-            , to_index_string ( pi_puzzel, i_vak)
-            , l_orig_aanwijzing
-            , l_huidig_ingekleurd
-            )
-          )
-        );
-      end if;
-    end loop;
-  end valideer;
-
   procedure markeer_onderverdeling
   ( pio_puzzel              in out nocopy puzzel_type
   , pi_vak_index            in telling_type
@@ -1056,7 +1020,6 @@ as
     print('<html>');
     print('<head>');
     print('<meta charset="UTF-8">');
-    print('<meta http-equiv=Content-Type content="text/html; charset=windows-1252">');
     print('<style>');
     print
     ( apex_string.format
