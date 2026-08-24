@@ -1,5 +1,5 @@
 set termout off feedback off serveroutput on
-spool io_vivat_31_1_wall_e.html
+spool "output\io_vivat_31_1_wall_e.html"
 begin
   -- IO VIVAT  Jaargang 31 Nummer 1
   jap.oplossen
@@ -53,4 +53,4 @@ end;
 /
 spool off
 set termout on feedback on
-host "io_vivat_31_1_wall_e.html"
+host "output\io_vivat_31_1_wall_e.html"

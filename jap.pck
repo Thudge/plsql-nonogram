@@ -171,7 +171,7 @@ as
   begin
     print('<html>');
     print('<head>');
-    print('<meta http-equiv=Content-Type content="text/html; charset=windows-1252">');
+    print('<meta charset="UTF-8">');
     print('</head>');
     print('<body lang=EN-US>');
     print('<table border=1'
